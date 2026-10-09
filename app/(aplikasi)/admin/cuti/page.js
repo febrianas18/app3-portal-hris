@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAmbilData } from "@/lib/useAmbilData";
-import { ambilSemuaPengajuan } from "@/lib/data";
+import { ambilSemuaPengajuan, putuskanCuti } from "@/lib/data";
 import { formatTanggal, lamaHari } from "@/lib/waktu";
 import KepalaHalaman from "@/components/KepalaHalaman";
 import Ikon from "@/components/Ikon";
@@ -28,20 +28,23 @@ export default function HalamanPersetujuanCuti() {
 
   const { status: keadaan, data, cobaLagi } = useAmbilData(() => ambilSemuaPengajuan(status), [status]);
 
-  // Keputusan dan catatan hanya disimpan di tampilan / Decisions and notes are only kept on screen
-  const [keputusan, setKeputusan] = useState({});
+  // Catatan HRD per pengajuan (lokal, dikirim saat tombol diklik) / Per-request HRD notes (local, sent when button clicked)
   const [catatan, setCatatan] = useState({});
+  const [memuat, setMemuat] = useState({});
   const [pesan, setPesan] = useState("");
 
-  function putuskan(c, statusBaru) {
-    setKeputusan({ ...keputusan, [c.id]: statusBaru });
-    setPesan(`${c.id} milik ${c.nama} ${statusBaru} (contoh, belum tersimpan).`);
+  async function putuskan(c, statusBaru) {
+    setMemuat((m) => ({ ...m, [c.id]: true }));
+    try {
+      await putuskanCuti(c.id, statusBaru, catatan[c.id] ?? c.catatanHrd);
+      setPesan(`${c.id} milik ${c.nama} berhasil ${statusBaru === "disetujui" ? "disetujui" : "ditolak"}.`);
+      cobaLagi(); // muat ulang daftar dari Firestore / reload list from Firestore
+    } catch {
+      setPesan(`Gagal memutuskan ${c.id}. Coba lagi.`);
+    } finally {
+      setMemuat((m) => ({ ...m, [c.id]: false }));
+    }
   }
-
-  // Pengajuan yang baru diputuskan keluar dari saringan Menunggu / Freshly decided requests drop out of the Menunggu filter
-  const tampil = (data ?? [])
-    .map((c) => ({ ...c, status: keputusan[c.id] ?? c.status, catatanHrd: catatan[c.id] ?? c.catatanHrd }))
-    .filter((c) => status === "semua" || c.status === status);
 
   return (
     <div className="space-y-8">
@@ -71,13 +74,13 @@ export default function HalamanPersetujuanCuti() {
 
       {keadaan === "memuat" && <Memuat />}
       {keadaan === "gagal" && <Gagal onCobaLagi={cobaLagi} />}
-      {keadaan === "berhasil" && tampil.length === 0 && (
+      {keadaan === "berhasil" && (data ?? []).length === 0 && (
         <Kosong teks={status === "menunggu" ? "Semua pengajuan sudah diputuskan." : "Tidak ada pengajuan dengan status ini."} />
       )}
-      {keadaan === "berhasil" && tampil.length > 0 && (
+      {keadaan === "berhasil" && (data ?? []).length > 0 && (
         // Satu kartu per pengajuan supaya semua yang dibutuhkan untuk memutuskan ada di satu tempat / One card per request so everything needed to decide sits together
         <ul className="space-y-5">
-          {tampil.map((c) => (
+          {(data ?? []).map((c) => (
             <li key={c.id} className="kartu overflow-hidden">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-tinta/10 bg-krem px-5 py-3">
                 <div className="flex items-center gap-3">
@@ -108,16 +111,26 @@ export default function HalamanPersetujuanCuti() {
                       <textarea
                         id={`catatan-${c.id}`}
                         rows={2}
-                        value={c.catatanHrd}
+                        defaultValue={c.catatanHrd}
                         onChange={(e) => setCatatan({ ...catatan, [c.id]: e.target.value })}
                         className="isian"
                       />
                       <div className="mt-3 flex flex-wrap gap-3">
-                        <button type="button" onClick={() => putuskan(c, "disetujui")} className="tombol-utama">
+                        <button
+                          type="button"
+                          onClick={() => putuskan(c, "disetujui")}
+                          disabled={!!memuat[c.id]}
+                          className="tombol-utama"
+                        >
                           <Ikon nama="centang" />
-                          Setujui
+                          {memuat[c.id] ? "Menyimpan…" : "Setujui"}
                         </button>
-                        <button type="button" onClick={() => putuskan(c, "ditolak")} className="tombol border border-ditolak/40 bg-panel text-red-700 shadow-tipis hover:bg-ditolak/5">
+                        <button
+                          type="button"
+                          onClick={() => putuskan(c, "ditolak")}
+                          disabled={!!memuat[c.id]}
+                          className="tombol border border-ditolak/40 bg-panel text-red-700 shadow-tipis hover:bg-ditolak/5"
+                        >
                           Tolak
                         </button>
                       </div>

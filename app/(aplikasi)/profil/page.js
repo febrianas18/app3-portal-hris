@@ -1,18 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { usePengguna } from "@/lib/pengguna";
+import { simpanNamaProfil } from "@/lib/data";
 import KepalaHalaman from "@/components/KepalaHalaman";
+import Memuat from "@/components/Memuat";
 
-// Profil (PRD 4.5). Nama bisa diubah di tampilan, belum disimpan / Profile (PRD 4.5). Name is editable on screen, not saved yet
+// Profil (PRD 4.5) — menyimpan nama ke Firestore / Profile (PRD 4.5) — saves name to Firestore
 export default function HalamanProfil() {
   const { pengguna } = usePengguna();
-  const [nama, setNama] = useState(pengguna.nama);
+  const [nama, setNama] = useState(pengguna?.nama || "");
+  const [memuat, setMemuat] = useState(false);
   const [pesan, setPesan] = useState("");
 
-  function simpan(e) {
+  useEffect(() => {
+    if (pengguna?.nama) {
+      setNama(pengguna.nama);
+    }
+  }, [pengguna?.nama]);
+
+  if (!pengguna) return <Memuat />;
+
+  async function simpan(e) {
     e.preventDefault();
-    setPesan(nama.trim() ? "Nama diperbarui (contoh, belum tersimpan)." : "Nama wajib diisi.");
+    if (!nama.trim()) {
+      setPesan("Nama wajib diisi.");
+      return;
+    }
+    setMemuat(true);
+    setPesan("");
+    try {
+      await simpanNamaProfil(pengguna.uid, nama.trim());
+      setPesan("Nama berhasil diperbarui.");
+    } catch {
+      setPesan("Gagal menyimpan. Coba lagi.");
+    } finally {
+      setMemuat(false);
+    }
   }
 
   return (
@@ -51,7 +75,9 @@ export default function HalamanProfil() {
             />
           </div>
           <div className="flex flex-wrap items-center gap-4">
-            <button type="submit" className="tombol-utama px-8">Simpan</button>
+            <button type="submit" disabled={memuat} className="tombol-utama px-8">
+              {memuat ? "Menyimpan…" : "Simpan"}
+            </button>
             {pesan && <p role="status" className="font-bold text-tinta">{pesan}</p>}
           </div>
         </div>

@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { usePengguna } from "@/lib/pengguna";
 import { useAmbilData } from "@/lib/useAmbilData";
-import { ambilPresensi } from "@/lib/data";
-import { bulanIni, formatBulan, formatJam, formatTanggal, terlambat } from "@/lib/waktu";
+import { ambilPresensi, ambilPresensiTanggal, simpanPresensiMasuk, simpanPresensiPulang } from "@/lib/data";
+import { bulanIni, formatBulan, formatJam, formatTanggal, terlambat, tanggalHariIni } from "@/lib/waktu";
 import KepalaHalaman from "@/components/KepalaHalaman";
 import Ikon from "@/components/Ikon";
 import Memuat from "@/components/Memuat";
@@ -22,12 +22,48 @@ export default function HalamanPresensi() {
   const dariAlamat = searchParams.get("bulan");
   const bulan = /^\d{4}-\d{2}$/.test(dariAlamat ?? "") ? dariAlamat : bulanIni();
 
-  const { status, data, cobaLagi } = useAmbilData(() => ambilPresensi(pengguna.uid, bulan), [pengguna.uid, bulan]);
+  const { status, data, cobaLagi } = useAmbilData(
+    () => (pengguna?.uid ? ambilPresensi(pengguna.uid, bulan) : Promise.resolve([])),
+    [pengguna?.uid, bulan]
+  );
 
-  // Catat Masuk/Pulang hanya mengubah tampilan, belum menyimpan / Clock in/out only changes the screen, nothing is saved yet
-  const [jamMasuk, setJamMasuk] = useState(null);
-  const [jamPulang, setJamPulang] = useState(null);
+  // Presensi hari ini: dibaca dari Firestore untuk menentukan status tombol / Today's attendance: read from Firestore to determine button state
+  const hariIni = tanggalHariIni();
+  const { data: presensiHariIni, cobaLagi: muatUlangHariIni } = useAmbilData(
+    () => (pengguna?.uid ? ambilPresensiTanggal(pengguna.uid, hariIni) : Promise.resolve(null)),
+    [pengguna?.uid, hariIni]
+  );
 
+  const [simpan, setSimpan] = useState({ memuat: false, pesan: "" });
+
+  if (!pengguna) return <Memuat />;
+
+  async function catatMasuk() {
+    setSimpan({ memuat: true, pesan: "" });
+    try {
+      await simpanPresensiMasuk(pengguna.uid);
+      setSimpan({ memuat: false, pesan: "Jam masuk berhasil dicatat." });
+      muatUlangHariIni();
+      cobaLagi(); // muat ulang tabel riwayat / refresh history table
+    } catch {
+      setSimpan({ memuat: false, pesan: "Gagal mencatat jam masuk. Coba lagi." });
+    }
+  }
+
+  async function catatPulang() {
+    setSimpan({ memuat: true, pesan: "" });
+    try {
+      await simpanPresensiPulang(pengguna.uid);
+      setSimpan({ memuat: false, pesan: "Jam pulang berhasil dicatat." });
+      muatUlangHariIni();
+      cobaLagi();
+    } catch {
+      setSimpan({ memuat: false, pesan: "Gagal mencatat jam pulang. Coba lagi." });
+    }
+  }
+
+  const sudahMasuk = !!presensiHariIni?.jamMasuk;
+  const sudahPulang = !!presensiHariIni?.jamPulang;
   const jumlahTerlambat = data ? data.filter((p) => terlambat(p.jamMasuk)).length : 0;
 
   return (
@@ -38,25 +74,33 @@ export default function HalamanPresensi() {
         <div>
           <p className="text-sm font-semibold tracking-wide text-sedap uppercase">Hari ini</p>
           <p className="mt-1 text-2xl font-bold text-tinta tabular-nums">
-            {jamMasuk === null && "Belum presensi"}
-            {jamMasuk !== null && jamPulang === null && `Masuk pukul ${formatJam(jamMasuk)}`}
-            {jamPulang !== null && `Pulang pukul ${formatJam(jamPulang)}`}
+            {!sudahMasuk && "Belum presensi"}
+            {sudahMasuk && !sudahPulang && `Masuk pukul ${formatJam(presensiHariIni.jamMasuk)}`}
+            {sudahPulang && `Pulang pukul ${formatJam(presensiHariIni.jamPulang)}`}
           </p>
-          {jamMasuk !== null && (
+          {sudahMasuk && (
             <p className="mt-1 text-sm font-semibold text-redup">
-              {terlambat(jamMasuk) ? "Terlambat. " : "Tepat waktu. "}Contoh tampilan, belum tersimpan.
+              {terlambat(presensiHariIni.jamMasuk) ? "Terlambat." : "Tepat waktu."}
             </p>
+          )}
+          {simpan.pesan && (
+            <p role="status" className="mt-2 text-sm font-bold text-sedap">{simpan.pesan}</p>
           )}
         </div>
         <div className="flex flex-wrap gap-3">
-          <button type="button" onClick={() => setJamMasuk(new Date())} disabled={jamMasuk !== null} className="tombol-utama px-6 py-3 text-lg">
+          <button
+            type="button"
+            onClick={catatMasuk}
+            disabled={sudahMasuk || simpan.memuat}
+            className="tombol-utama px-6 py-3 text-lg"
+          >
             <Ikon nama="masuk" />
             Catat Masuk
           </button>
           <button
             type="button"
-            onClick={() => setJamPulang(new Date())}
-            disabled={jamMasuk === null || jamPulang !== null}
+            onClick={catatPulang}
+            disabled={!sudahMasuk || sudahPulang || simpan.memuat}
             className="tombol-kunyit px-6 py-3 text-lg"
           >
             <Ikon nama="keluar" />

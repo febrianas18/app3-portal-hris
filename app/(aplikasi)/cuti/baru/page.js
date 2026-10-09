@@ -3,21 +3,28 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { usePengguna } from "@/lib/pengguna";
+import { simpanPengajuanCuti } from "@/lib/data";
 import KepalaHalaman from "@/components/KepalaHalaman";
 import Ikon from "@/components/Ikon";
+import Memuat from "@/components/Memuat";
 
 const kosong = { tanggalMulai: "", tanggalSelesai: "", alasan: "" };
 
-// Ajukan Cuti (PRD 4.4.1). Belum menyimpan ke Firestore / Submit leave (PRD 4.4.1). Not saved to Firestore yet
+// Ajukan Cuti (PRD 4.4.1) — menyimpan ke Firestore / Submit leave (PRD 4.4.1) — saves to Firestore
 export default function HalamanAjukanCuti() {
+  const { pengguna } = usePengguna();
   const router = useRouter();
   const [isian, setIsian] = useState(kosong);
   const [galat, setGalat] = useState({});
-  const [tersimpan, setTersimpan] = useState(false);
+  const [memuat, setMemuat] = useState(false);
+  const [pesanGalat, setPesanGalat] = useState("");
+
+  if (!pengguna) return <Memuat />;
 
   const ubah = (e) => setIsian({ ...isian, [e.target.name]: e.target.value });
 
-  function kirim(e) {
+  async function kirim(e) {
     e.preventDefault();
     const g = {};
     if (!isian.tanggalMulai) g.tanggalMulai = "Tanggal mulai wajib diisi.";
@@ -29,12 +36,15 @@ export default function HalamanAjukanCuti() {
     setGalat(g);
     if (Object.keys(g).length > 0) return;
 
-    setTersimpan(true);
-    setTimeout(() => {
-      setIsian(kosong);
-      setTersimpan(false);
+    setMemuat(true);
+    setPesanGalat("");
+    try {
+      await simpanPengajuanCuti(pengguna.uid, isian);
       router.push("/cuti");
-    }, 1500);
+    } catch {
+      setPesanGalat("Gagal menyimpan pengajuan. Coba lagi.");
+      setMemuat(false);
+    }
   }
 
   return (
@@ -65,12 +75,12 @@ export default function HalamanAjukanCuti() {
           {galat.alasan && <p className="galat">{galat.alasan}</p>}
         </div>
 
-        <button type="submit" disabled={tersimpan} className="tombol-utama px-8 py-3 text-lg">
-          Kirim
+        <button type="submit" disabled={memuat} className="tombol-utama px-8 py-3 text-lg">
+          {memuat ? "Menyimpan…" : "Kirim"}
         </button>
-        {tersimpan && (
-          <p role="status" className="rounded-xl border border-disetujui bg-disetujui/15 p-3 font-bold text-tinta">
-            Tersimpan (contoh). Kembali ke Daftar Cuti...
+        {pesanGalat && (
+          <p role="alert" className="rounded-xl border border-ditolak/30 bg-ditolak/10 p-3 font-bold text-red-700">
+            {pesanGalat}
           </p>
         )}
       </form>

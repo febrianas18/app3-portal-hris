@@ -16,6 +16,7 @@ export default function HalamanBeranda() {
 
   // Dua data diambil bersamaan / Both pieces of data are fetched together
   const { status, data, cobaLagi } = useAmbilData(async () => {
+    if (!pengguna?.uid) return null;
     // Tanggal dihitung di sini, bukan saat render, supaya tidak terkunci di tanggal build / Computed here, not during render, so it is not frozen at build date
     const hariIni = tanggalHariIni();
     const [presensi, cuti] = await Promise.all([
@@ -23,7 +24,9 @@ export default function HalamanBeranda() {
       ambilPengajuanCuti(pengguna.uid),
     ]);
     return { hariIni, presensi, menunggu: cuti.filter((c) => c.status === "menunggu").length };
-  }, [pengguna.uid]);
+  }, [pengguna?.uid]);
+
+  if (!pengguna) return <Memuat />;
 
   let teksPresensi = "Belum presensi hari ini";
   if (data?.presensi?.jamPulang) teksPresensi = "Sudah pulang";

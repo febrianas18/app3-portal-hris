@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import BilahAtas from "@/components/BilahAtas";
 import MenuSamping from "@/components/MenuSamping";
 import Memuat from "@/components/Memuat";
+import RouteGuard from "@/components/RouteGuard";
 
 /**
  * Tata letak semua halaman setelah masuk. Halaman /masuk dan /daftar ada di luar
@@ -14,20 +15,24 @@ import Memuat from "@/components/Memuat";
  */
 export default function LayoutAplikasi({ children }) {
   return (
-    <div className="flex min-h-screen flex-col">
-      <BilahAtas />
-      <div className="flex flex-1 flex-col md:flex-row">
-        <aside className="bg-tinta md:w-64 md:shrink-0">
-          <Suspense>
-            <MenuSamping />
-          </Suspense>
-        </aside>
-        <main className="min-w-0 flex-1 p-4 md:p-8">
-          <div className="mx-auto max-w-5xl">
-            <Suspense fallback={<Memuat />}>{children}</Suspense>
+    <Suspense fallback={<Memuat />}>
+      <RouteGuard>
+        <div className="flex min-h-screen flex-col">
+          <BilahAtas />
+          <div className="flex flex-1 flex-col md:flex-row">
+            <aside className="bg-tinta md:w-64 md:shrink-0">
+              <Suspense>
+                <MenuSamping />
+              </Suspense>
+            </aside>
+            <main className="min-w-0 flex-1 p-4 md:p-8">
+              <div className="mx-auto max-w-5xl">
+                {children}
+              </div>
+            </main>
           </div>
-        </main>
-      </div>
-    </div>
+        </div>
+      </RouteGuard>
+    </Suspense>
   );
 }

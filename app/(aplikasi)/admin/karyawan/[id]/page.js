@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAmbilData } from "@/lib/useAmbilData";
-import { ambilKaryawan } from "@/lib/data";
+import { ambilKaryawan, simpanPeranKaryawan } from "@/lib/data";
 import KepalaHalaman from "@/components/KepalaHalaman";
 import Ikon from "@/components/Ikon";
 import Memuat from "@/components/Memuat";
@@ -43,14 +43,24 @@ const pilihanPeran = [
   { nilai: "hrd", label: "HRD", keterangan: "Ditambah mengelola karyawan, memutuskan cuti, dan membaca laporan." },
 ];
 
-// Simpan hanya mengubah tampilan, belum menulis ke Firestore / Save only changes the screen, nothing is written to Firestore
+// Simpan peran ke Firestore / Save role to Firestore
 function FormPeran({ karyawan }) {
   const [peran, setPeran] = useState(karyawan.role);
+  const [memuat, setMemuat] = useState(false);
   const [pesan, setPesan] = useState("");
 
-  function simpan(e) {
+  async function simpan(e) {
     e.preventDefault();
-    setPesan(`Peran diubah menjadi ${peran === "hrd" ? "HRD" : "Karyawan"} (contoh, belum tersimpan).`);
+    setMemuat(true);
+    setPesan("");
+    try {
+      await simpanPeranKaryawan(karyawan.id, peran);
+      setPesan(`Peran berhasil diubah menjadi ${peran === "hrd" ? "HRD" : "Karyawan"}.`);
+    } catch {
+      setPesan("Gagal menyimpan peran. Coba lagi.");
+    } finally {
+      setMemuat(false);
+    }
   }
 
   return (
@@ -84,7 +94,9 @@ function FormPeran({ karyawan }) {
         </div>
       </fieldset>
       <div className="flex flex-wrap items-center gap-4">
-        <button type="submit" className="tombol-utama px-8">Simpan</button>
+        <button type="submit" disabled={memuat} className="tombol-utama px-8">
+          {memuat ? "Menyimpan…" : "Simpan"}
+        </button>
         {pesan && <p role="status" className="font-bold text-tinta">{pesan}</p>}
       </div>
     </form>

@@ -1,0 +1,72 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Fungsi pembantu ────────────────────────────────────────────────────────
+    // Cek apakah pengguna sudah masuk / Check if the user is signed in
+    function sudahMasuk() {
+      return request.auth != null;
+    }
+
+    // Ambil dokumen profil pengguna yang sedang masuk / Get the signed-in user's profile doc
+    function profil() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Cek apakah pengguna adalah HRD / Check if the signed-in user is HRD
+    function adalahHrd() {
+      return sudahMasuk() && profil().role == 'hrd';
+    }
+
+    // ── Koleksi users ──────────────────────────────────────────────────────────
+    match /users/{uid} {
+      // Semua yang sudah masuk boleh baca profil siapa pun (dipakai HRD dan Laporan) / Anyone signed in may read any profile (used by HRD and Report pages)
+      allow read: if sudahMasuk();
+
+      // Pengguna boleh membuat dokumen profilnya sendiri (saat daftar) / User may create their own profile doc (on registration)
+      allow create: if sudahMasuk() && request.auth.uid == uid
+                    && request.resource.data.role == 'karyawan'; // role awal selalu karyawan / initial role always karyawan
+
+      // Karyawan boleh update namanya sendiri; field role hanya HRD yang boleh ubah / Employee may update their own name; only HRD may change the role field
+      allow update: if sudahMasuk() && (
+        (request.auth.uid == uid
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'email']))
+        || adalahHrd()
+      );
+
+      allow delete: if false; // Tidak ada penghapusan akun lewat aplikasi / No account deletion through the app
+    }
+
+    // ── Koleksi presensi ───────────────────────────────────────────────────────
+    match /presensi/{docId} {
+      // Karyawan hanya bisa baca miliknya; HRD bisa baca semua / Employee reads own; HRD reads all
+      allow read: if sudahMasuk() && (
+        request.auth.uid == resource.data.karyawanId || adalahHrd()
+      );
+
+      // Karyawan hanya boleh menulis catatan atas namanya sendiri / Employee may only write records under their own uid
+      allow create, update: if sudahMasuk()
+                            && request.auth.uid == request.resource.data.karyawanId;
+
+      allow delete: if false;
+    }
+
+    // ── Koleksi pengajuan_cuti ─────────────────────────────────────────────────
+    match /pengajuan_cuti/{docId} {
+      // Karyawan hanya bisa baca miliknya; HRD bisa baca semua / Employee reads own; HRD reads all
+      allow read: if sudahMasuk() && (
+        request.auth.uid == resource.data.karyawanId || adalahHrd()
+      );
+
+      // Karyawan mengajukan cuti atas namanya sendiri dengan status menunggu / Employee submits leave under their own uid with status menunggu
+      allow create: if sudahMasuk()
+                    && request.auth.uid == request.resource.data.karyawanId
+                    && request.resource.data.status == 'menunggu';
+
+      // Hanya HRD yang boleh mengubah status (menyetujui/menolak) / Only HRD may update status (approve/reject)
+      allow update: if adalahHrd();
+
+      allow delete: if false;
+    }
+  }
+}
